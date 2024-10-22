@@ -4,10 +4,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ApexOptions } from "apexcharts";
 import Chart from "react-apexcharts";
 
-// Images
-import InsightsLogo from "../assets/Insights.svg";
-import ControlsLogo from "../assets/Controls.svg";
-
 // Api
 import {
   ComparisonData,
@@ -20,7 +16,6 @@ import {
 // UI Elements
 import {
   Box,
-  Button,
   Checkbox,
   RangeSlider,
   RangeSliderFilledTrack,
@@ -32,6 +27,7 @@ import {
   HStack,
   Tag,
   TagLabel,
+  Tooltip,
 } from "@chakra-ui/react";
 
 export interface AverageChartProps {
@@ -41,7 +37,11 @@ export interface AverageChartProps {
     quarterData: QuarterData[];
   };
 }
+
+// Define dropdown options
 const dropdownOptions = ["Video", "Note", "Both"];
+
+// Define months for the Range Slider
 const months = [
   "Jan", // 0
   "Feb", // 1
@@ -56,70 +56,71 @@ const months = [
   "Nov", // 10
   "Dec", // 11
 ];
+
+// Define specific, vibrant colors for each series
+const seriesColors: { [key: string]: string } = {
+  "TV Azteca": "#3357FF",      // Vibrant Blue
+  "Competition": "#FF5733",    // Vibrant Red
+  // Add more series colors here if needed
+};
+
 const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
   // States
   const [showZoomIn, setShowZoomIn] = useState(false);
   const [showControls, setShowControls] = useState(false);
-  const [showdateFilter, setShowDateFilter] = useState(false);
-  const [dateFilter, setDateFilter] = useState([""]);
+  const [showDateFilter, setShowDateFilter] = useState(false);
+  const [dateFilter, setDateFilter] = useState<string[]>([""]);
   const [selectedDate, setSelectedDate] = useState("");
 
   const [showAllData, setShowAllData] = useState(false);
   const [data, setData] = useState(propData);
+
   useEffect(() => {
-    setDateFilter([propData?.weekly?.data[0]?.data[0]?.x]);
+    setDateFilter([propData?.weekly?.data[0]?.data[0]?.x || ""]);
     setData(propData);
   }, [propData]);
+
   useEffect(() => {
-    if (showdateFilter === false) {
+    if (!showDateFilter) {
       setData(propData);
+    } else {
+      const matchedWeeklyData = propData.weekly.data.map((outerData) => ({
+        ...outerData,
+        data: outerData.data.filter((innerData) =>
+          dateFilter.includes(innerData.x)
+        ),
+      }));
+
+      const matchedChangesData = propData.weekly.changes.map((outerData) => ({
+        ...outerData,
+        data: outerData.data.filter((innerData) =>
+          dateFilter.includes(innerData.x)
+        ),
+      }));
+
+      setData({
+        ...propData,
+        weekly: {
+          data: matchedWeeklyData,
+          changes: matchedChangesData,
+        },
+      });
     }
-    else{
-
-      const matchedweeklyData = propData.weekly.data.map(outerData => {
-        return {
-            ...outerData,
-            data: outerData.data.filter(innerData => dateFilter.includes(innerData.x))
-        };
-    });
-      
-
-      const matchedchangesData = propData.weekly.changes.map(outerData => {
-        return {
-            ...outerData,
-            data: outerData.data.filter(innerData => dateFilter.includes(innerData.x))
-        };
-    });
-
-    
-    
-    
-    setData({
-      ...propData,
-      weekly: {
-        data: matchedweeklyData,
-        changes: matchedchangesData,
-      },
-    });
-    }
-  }, [showdateFilter,dateFilter.length]);
-  
-                              
-
-  //
-
+  }, [showDateFilter, dateFilter.length, propData]);
 
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [quarterVal, setQuarterVal] = useState([0, 11]);
+  const [quarterVal, setQuarterVal] = useState<[number, number]>([0, 11]);
 
   const [selectedDropdown, setSelectedDropdown] = useState(dropdownOptions[0]);
   const [showVals, setShowVals] = useState(false);
   const [showPercentages, setShowPercentages] = useState(false);
 
-  const dataToUse = useMemo(() => {
-    
-    let mainDataUse = [...data.weekly.data];
+  // Ref to access ApexCharts instance
+  const chartRef = useRef<any>(null);
 
+  // Prepare data based on filters and selections
+  const dataToUse = useMemo(() => {
+    let mainDataUse = [...data.weekly.data];
 
     mainDataUse = mainDataUse
       .filter((item) => {
@@ -127,8 +128,9 @@ const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
           return item.name.includes("Video");
         } else if (selectedDropdown === "Note") {
           return item.name.includes("Note");
-        } else
+        } else {
           return !item.name.includes("Note") && !item.name.includes("Video");
+        }
       })
       .map((data) => ({
         ...data,
@@ -137,6 +139,7 @@ const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
           .replace(" Video", "")
           .replace(" Note", ""),
       }));
+
     if (!showAllData) {
       mainDataUse = mainDataUse.map((item) => ({
         ...item,
@@ -152,9 +155,11 @@ const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
         }),
       }));
     }
+
     return mainDataUse;
   }, [data, selectedDropdown, quarterVal, selectedYear, showAllData]);
 
+  // Insights Data
   const [insightsData, setInsights] = useState<Insights>({
     notes: {
       competition: "",
@@ -169,25 +174,29 @@ const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
       self: "",
     },
   });
+
+  // Define ApexOptions
   const optionsLine = useMemo<ApexOptions>(
     () => ({
       chart: {
-        animations: {},
+        animations: {
+          enabled: true,
+          easing: "easeinout",
+          speed: 800,
+        },
         height: 328,
-        type: "line",
-        zoom: {},
+        type: "area", // Area chart
+        zoom: {
+          enabled: true,
+        },
         toolbar: {
-          show: false,
+          show: false, // We'll handle custom toolbar
         },
       },
       stroke: {
         curve: "smooth",
         width: 2,
       },
-      series: dataToUse.map((item, index) => ({
-        ...item,
-        color: index === 0 ? "#0574cd" : "#f32e42", // Line colors
-      })),
       title: {
         align: "left",
         offsetY: 25,
@@ -207,10 +216,13 @@ const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
         },
       },
       xaxis: {
+        type: "datetime",
+        labels: {
+          datetimeUTC: false,
+        },
         tooltip: {
           enabled: false,
         },
-        type: "datetime",
       },
       yaxis: {
         labels: {
@@ -223,6 +235,16 @@ const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
         position: "bottom",
         horizontalAlign: "center",
       },
+      colors: dataToUse.map((item) => seriesColors[item.name] || "#000"), // Assign colors based on series
+      fill: {
+        type: "gradient", // Enable gradient fill
+        gradient: {
+          shadeIntensity: 1,
+          opacityFrom: 0.5, // Increased opacity for more vibrant fill
+          opacityTo: 0.1,   // Increased opacity to make the area more colorful
+          stops: [0, 90, 100],
+        },
+      },
       dataLabels: {
         offsetY:
           showVals && showPercentages
@@ -232,13 +254,13 @@ const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
             : showPercentages
             ? -10
             : 0,
-        enabled: true,
-        formatter(val, data): any {
+        enabled: showVals || showPercentages, // Enable based on state
+        formatter(val, data): string {
           const item = dataToUse[data.seriesIndex].data[data.dataPointIndex]?.y;
           const prevItem =
             dataToUse[data.seriesIndex].data?.[data.dataPointIndex - 1]?.y;
           let str = "";
-          if (item && prevItem) {
+          if (item !== undefined && prevItem !== undefined) {
             if (item > prevItem) {
               str += "▲ ";
             } else if (item < prevItem) {
@@ -250,7 +272,7 @@ const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
             let percentageDifference = +(
               (difference / prevItem) *
               100
-            ).toFixed?.(1);
+            ).toFixed(1);
             str += percentageDifference;
           }
           const res = [];
@@ -258,33 +280,47 @@ const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
             res.push(val.toString());
           }
           if (str && showPercentages) {
-            res.unshift(str + "%");
+            res.unshift(`${str}%`);
           }
-          return res;
+          return res.join(" "); // Return as a single string
         },
         background: {
           enabled: true,
           borderColor: "transparent",
         },
-        distributed: true,
+        distributed: false, // Set to false to use series colors
         style: {
-          colors: [
-            function (data: any): any {
-              const item = data.series[data.seriesIndex][data.dataPointIndex];
-              const prevItem =
-                data.series[data.seriesIndex]?.[data.dataPointIndex - 1];
-              if (item && prevItem) {
-                if (item > prevItem) return "#3bae63";
-                else if (item < prevItem) return "#dc2c3e";
-              }
-            },
-          ],
+          colors: dataToUse.map((item) => seriesColors[item.name] || "#000"),
+        },
+      },
+      tooltip: {
+        enabled: true,
+        x: {
+          format: "dd MMM yyyy",
+        },
+        y: {
+          formatter: function (val) {
+            return `${val} units`; // Customize this to show your units
+          },
         },
       },
     }),
     [dataToUse, showPercentages, showVals]
-    
   );
+
+  // Define 'seriesLine' separately
+  const seriesLine = useMemo(() => {
+    return dataToUse.map((item) => ({
+      name: item.name,
+      data: item.data.map((d) => ({
+        x: d.x,
+        y: d.y,
+      })),
+      // Color is handled via the 'colors' array in ApexOptions
+    }));
+  }, [dataToUse]);
+
+  // Fetch Insights Data
   const prevReqController = useRef(new AbortController());
   useEffect(() => {
     if (prevReqController.current) {
@@ -293,16 +329,17 @@ const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
     prevReqController.current = new AbortController();
     getInsights(
       {
-        start: `${quarterVal[0] > 8 ? "" : "0"}${
-          quarterVal[0] + 1
-        }-${selectedYear}`,
-        end: `${quarterVal[1] > 8 ? "" : "0"}${
-          quarterVal[1] + 1
-        }-${selectedYear}`,
+        start: `${quarterVal[0] > 8 ? "0" : ""}${quarterVal[0] + 1}-${
+          selectedYear
+        }`,
+        end: `${quarterVal[1] > 8 ? "0" : ""}${quarterVal[1] + 1}-${
+          selectedYear
+        }`,
       },
       prevReqController.current.signal
     ).then((res) => setInsights(res));
-  }, [quarterVal]);
+  }, [quarterVal, selectedYear]);
+
   const insights =
     selectedDropdown === "Both"
       ? insightsData.total
@@ -310,16 +347,62 @@ const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
       ? insightsData.videos
       : insightsData.notes;
 
-      const handleSelectDateChange = (e) => {
-        const value = e.target.value;
-    
-        // Check if the value is already in the dateFilter array
-        if (!dateFilter.includes(value) && value) {
-          setDateFilter([...dateFilter, value]);
-          setSelectedDate(value);
+  const handleSelectDateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value;
+
+    // Check if the value is already in the dateFilter array
+    if (!dateFilter.includes(value) && value) {
+      setDateFilter([...dateFilter, value]);
+      setSelectedDate(value);
+    }
+  };
+
+  // Handler to reset zoom on double-tap or double-click
+  const handleResetZoom = () => {
+    if (chartRef.current) {
+      const chart = chartRef.current.chart;
+      chart.resetZoom();
+    }
+  };
+
+  // Handler to zoom in on double-tap or double-click
+  const handleZoomIn = (e: MouseEvent | TouchEvent) => {
+    if (chartRef.current) {
+      const chart = chartRef.current.chart;
+      const xAxis = chart.w.globals.minX + (chart.w.globals.maxX - chart.w.globals.minX) * 0.25;
+      const newMin = chart.w.globals.minX + (chart.w.globals.maxX - chart.w.globals.minX) * 0.25;
+      const newMax = chart.w.globals.maxX - (chart.w.globals.maxX - chart.w.globals.minX) * 0.25;
+      chart.zoomX(newMin, newMax);
+    }
+  };
+
+  // Add event listeners for double-tap and double-click
+  useEffect(() => {
+    const chartElement = chartRef.current?.chart?.w.globals.dom.baseEl;
+
+    if (chartElement) {
+      // For double-click to zoom in
+      chartElement.addEventListener("dblclick", handleZoomIn);
+
+      // For double-tap to zoom in
+      let lastTap = 0;
+      chartElement.addEventListener("touchend", (e: TouchEvent) => {
+        const currentTime = new Date().getTime();
+        const tapLength = currentTime - lastTap;
+        if (tapLength < 500 && tapLength > 0) {
+          handleZoomIn(e);
         }
+        lastTap = currentTime;
+      });
+
+      // Cleanup
+      return () => {
+        chartElement.removeEventListener("dblclick", handleZoomIn);
+        chartElement.removeEventListener("touchend", handleZoomIn);
       };
-  
+    }
+  }, []);
+
   return (
     <div id="line-adwords">
       {/* Header Text */}
@@ -329,7 +412,7 @@ const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
         </div>
 
         <section className="VerticalBarChart__legend">
-          {/* control SVG Start */}
+          {/* Control SVG Start */}
           <div>
             <button
               onClick={() => setShowControls(!showControls)}
@@ -339,6 +422,7 @@ const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
                 cursor: "pointer",
               }}
             >
+              {/* Control SVG */}
               <svg
                 width="20"
                 height="20"
@@ -398,6 +482,7 @@ const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
                 cursor: "pointer",
               }}
             >
+              {/* Insights SVG */}
               <svg
                 version="1.1"
                 id="Capa_1"
@@ -415,24 +500,20 @@ const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
                   strokeLinejoin="round"
                 />
                 <g id="SVGRepo_iconCarrier">
-                  <g>
-                    <g>
-                      <path
-                        d="M244.236,0.002C109.562,0.002,0,109.565,0,244.238c0,134.679,109.563,244.244,244.236,244.244 
-              c134.684,0,244.249-109.564,244.249-244.244C488.484,109.566,378.92,0.002,244.236,0.002z M244.236,413.619 
-              c-93.4,0-169.38-75.979-169.38-169.379c0-93.396,75.979-169.375,169.38-169.375s169.391,75.979,169.391,169.375 
-              C413.627,337.641,337.637,413.619,244.236,413.619z"
-                      />
-                      <path
-                        d="M244.236,206.816c-14.757,0-26.619,11.962-26.619,26.73v118.709c0,14.769,11.862,26.735,26.619,26.735 
-              c14.769,0,26.62-11.967,26.62-26.735V233.546C270.855,218.778,259.005,206.816,244.236,206.816z"
-                      />
-                      <path
-                        d="M244.236,107.893c-19.949,0-36.102,16.158-36.102,36.091c0,19.934,16.152,36.092,36.102,36.092 
-              c19.929,0,36.081-16.158,36.081-36.092C280.316,124.051,264.165,107.893,244.236,107.893z"
-                      />
-                    </g>
-                  </g>
+                  <path
+                    d="M244.236,0.002C109.562,0.002,0,109.565,0,244.238c0,134.679,109.563,244.244,244.236,244.244 
+                      c134.684,0,244.249-109.564,244.249-244.244C488.484,109.566,378.92,0.002,244.236,0.002z M244.236,413.619 
+                      c-93.4,0-169.38-75.979-169.38-169.379c0-93.396,75.979-169.375,169.38-169.375s169.391,75.979,169.391,169.375 
+                      C413.627,337.641,337.637,413.619,244.236,413.619z"
+                  />
+                  <path
+                    d="M244.236,206.816c-14.757,0-26.619,11.962-26.619,26.73v118.709c0,14.769,11.862,26.735,26.619,26.735 
+                      c14.769,0,26.62-11.967,26.62-26.735V233.546C270.855,218.778,259.005,206.816,244.236,206.816z"
+                  />
+                  <path
+                    d="M244.236,107.893c-19.949,0-36.102,16.158-36.102,36.091c0,19.934,16.152,36.092,36.102,36.092 
+                      c19.929,0,36.081-16.158,36.081-36.092C280.316,124.051,264.165,107.893,244.236,107.893z"
+                  />
                 </g>
               </svg>
             </button>
@@ -465,30 +546,19 @@ const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
             </Box>
           </div>
         </section>
-        {/*         
-        <div style={{ width: "300px" }}>
-          <Select
-            value={selectedDropdown}
-            onChange={(e) => setSelectedDropdown(e.target.value)}
-          >
-            {dropdownOptions.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </Select>
-        </div> */}
       </div>
 
       {/* Chart */}
-      <Chart
-        options={optionsLine}
-        series={optionsLine.series}
-        type="line"
-        height={250}
-      />
+      <Box ref={chartRef}>
+        <Chart
+          options={optionsLine}
+          series={seriesLine}
+          type="area" // Area chart
+          height={300} // Increased height for better visibility
+        />
+      </Box>
 
-      {/* Range Line */}
+      {/* Range Slider */}
       <div
         className="px-4 mb-3 slider-container"
         style={{
@@ -496,13 +566,12 @@ const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
         }}
       >
         <RangeSlider
-          defaultValue={[0, 100]}
+          isDisabled={showAllData}
           min={0}
           max={11}
           step={1}
           value={quarterVal}
           onChange={(e) => setQuarterVal(e)}
-          isDisabled={showAllData}
         >
           <RangeSliderTrack bg="red.100">
             <RangeSliderFilledTrack />
@@ -525,7 +594,7 @@ const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
         </div>
       </div>
 
-      {/* Open When user click on Zoom in then show this */}
+      {/* Controls and Insights */}
       <section
         style={{
           marginTop: "3%",
@@ -548,7 +617,7 @@ const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
                   marginBottom: "2%",
                 }}
               >
-                {/* control SVG Start */}
+                {/* Control SVG Start */}
                 <div>
                   <button
                     onClick={() => setShowControls(!showControls)}
@@ -609,7 +678,7 @@ const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
                 <div>
                   <Stack direction="row" spacing={5} align="center" mb={0}>
                     <Checkbox
-                      id="x-scheme"
+                      id="show-percentages"
                       isChecked={showPercentages}
                       onChange={(e) => setShowPercentages(e.target.checked)}
                       colorScheme="transparent"
@@ -618,7 +687,7 @@ const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
                       borderColor="white"
                       size="lg"
                     >
-                      Show percentages
+                      Show Percentages
                     </Checkbox>
 
                     <Checkbox
@@ -635,7 +704,7 @@ const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
                     </Checkbox>
 
                     <Checkbox
-                      id="raw-value"
+                      id="show-vals"
                       checked={showVals}
                       onChange={(e) => setShowVals(e.target.checked)}
                       colorScheme="transparent"
@@ -648,7 +717,7 @@ const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
                     </Checkbox>
                     <Checkbox
                       id="datefilter"
-                      checked={showdateFilter}
+                      checked={showDateFilter}
                       onChange={(e) => setShowDateFilter(e.target.checked)}
                       colorScheme="transparent"
                       outline="none"
@@ -661,20 +730,28 @@ const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
                   </Stack>
                 </div>
               </section>
-            {showdateFilter && 
-            <>
-                <Box ml={5}>
-                  {dateFilter.length > 0 && 
-                    dateFilter.map((date) => 
-                      <Tag key={date} size="sm" variant="solid" colorScheme="teal" mb={4} mx={.5}>
-                    <TagLabel  >{date}</TagLabel> 
-                    
-                  </Tag>)
-                  }
-                </Box>
+
+              {/* Date Filter Section */}
+              {showDateFilter && (
+                <>
+                  <Box ml={5}>
+                    {dateFilter.length > 0 &&
+                      dateFilter.map((date) => (
+                        <Tag
+                          key={date}
+                          size="sm"
+                          variant="solid"
+                          colorScheme="teal"
+                          mb={4}
+                          mx={0.5}
+                        >
+                          <TagLabel>{date}</TagLabel>
+                        </Tag>
+                      ))}
+                  </Box>
                   <HStack mb={8} mx={5}>
                     <Select
-                      value={selectedDate}
+                      value={selectedDate || ""}
                       onChange={handleSelectDateChange}
                       style={{
                         height: "30px",
@@ -682,18 +759,21 @@ const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
                         padding: "4px",
                         borderRadius: "5px",
                       }}
+                      placeholder="Select Date"
                     >
-                      {
-                        propData.weekly.data?.[1].data.map((date) => (
-                          <option key={date.x} style={{color: "black" }} value={date.x}>{date.x}</option>
-                        ))
-                      }
-
+                      {propData.weekly.data?.[1]?.data.map((date) => (
+                        <option
+                          key={date.x}
+                          style={{ color: "black" }}
+                          value={date.x}
+                        >
+                          {date.x}
+                        </option>
+                      ))}
                     </Select>
-
                   </HStack>
-            </>
-            }
+                </>
+              )}
             </>
           )}
 
@@ -742,32 +822,28 @@ const AverageChart: React.FC<AverageChartProps> = ({ data: propData }) => {
                           strokeLinejoin="round"
                         />
                         <g id="SVGRepo_iconCarrier">
-                          <g>
-                            <g>
-                              <path
-                                d="M244.236,0.002C109.562,0.002,0,109.565,0,244.238c0,134.679,109.563,244.244,244.236,244.244 
-              c134.684,0,244.249-109.564,244.249-244.244C488.484,109.566,378.92,0.002,244.236,0.002z M244.236,413.619 
-              c-93.4,0-169.38-75.979-169.38-169.379c0-93.396,75.979-169.375,169.38-169.375s169.391,75.979,169.391,169.375 
-              C413.627,337.641,337.637,413.619,244.236,413.619z"
-                              />
-                              <path
-                                d="M244.236,206.816c-14.757,0-26.619,11.962-26.619,26.73v118.709c0,14.769,11.862,26.735,26.619,26.735 
-              c14.769,0,26.62-11.967,26.62-26.735V233.546C270.855,218.778,259.005,206.816,244.236,206.816z"
-                              />
-                              <path
-                                d="M244.236,107.893c-19.949,0-36.102,16.158-36.102,36.091c0,19.934,16.152,36.092,36.102,36.092 
-              c19.929,0,36.081-16.158,36.081-36.092C280.316,124.051,264.165,107.893,244.236,107.893z"
-                              />
-                            </g>
-                          </g>
+                          <path
+                            d="M244.236,0.002C109.562,0.002,0,109.565,0,244.238c0,134.679,109.563,244.244,244.236,244.244 
+                        c134.684,0,244.249-109.564,244.249-244.244C488.484,109.566,378.92,0.002,244.236,0.002z M244.236,413.619 
+                        c-93.4,0-169.38-75.979-169.38-169.379c0-93.396,75.979-169.375,169.38-169.375s169.391,75.979,169.391,169.375 
+                        C413.627,337.641,337.637,413.619,244.236,413.619z"
+                          />
+                          <path
+                            d="M244.236,206.816c-14.757,0-26.619,11.962-26.619,26.73v118.709c0,14.769,11.862,26.735,26.619,26.735 
+                        c14.769,0,26.62-11.967,26.62-26.735V233.546C270.855,218.778,259.005,206.816,244.236,206.816z"
+                          />
+                          <path
+                            d="M244.236,107.893c-19.949,0-36.102,16.158-36.102,36.091c0,19.934,16.152,36.092,36.102,36.092 
+                        c19.929,0,36.081-16.158,36.081-36.092C280.316,124.051,264.165,107.893,244.236,107.893z"
+                          />
                         </g>
                       </svg>
                     </button>
                   </div>
                   {/* Insights SVG End */}
                   <Text style={{ lineHeight: "2rem" }}>
-                   {insights ? insights.self : "There is no insights"} <br />
-                   {insights ? insights.competition : "There is no insights"}
+                    {insights ? insights.self : "There are no insights"} <br />
+                    {insights ? insights.competition : "There are no insights"}
                   </Text>
                 </HStack>
               </Stack>
